@@ -195,12 +195,15 @@ assign HDMI_FREEZE = 0;
 assign HDMI_BLACKOUT = 0;
 
 assign LED_DISK = 0;
-assign LED_POWER = 0;
+assign LED_POWER[1]= 1;
 assign BUTTONS = 0;
 
 reg  [26:0] act_cnt;
 always @(posedge clk_sys) act_cnt <= act_cnt + 1'd1; 
-assign LED_USER    = act_cnt[26]  ? act_cnt[25:18]  > act_cnt[7:0]  : act_cnt[25:18]  <= act_cnt[7:0];
+assign LED_USER    = FB ? led[0] : act_cnt[26]  ? act_cnt[25:18]  > act_cnt[7:0]  : act_cnt[25:18]  <= act_cnt[7:0];
+
+wire [26:0] act_cnt2 = {~act_cnt[26],act_cnt[25:0]};
+assign LED_POWER[0]= FB ? led[2] : act_cnt2[26] ? act_cnt2[25:18] > act_cnt2[7:0] : act_cnt2[25:18] <= act_cnt2[7:0];
 
 
 `include "build_id.v" 
@@ -287,13 +290,13 @@ always @(posedge clk_sys) begin
 
 	if(RESET) begin
 		state <= 0;
-		cfg <= 0;
+		cfg <= 0;  // All configuration bits start at 0
 	end
 	else begin
 		case(state)
 			// Primary SDRAM testing (states 0-15)
 			0: if(sdram_ready) begin
-					cfg <= 0;
+					cfg <= 0;  // Clear all configuration bits
 					state      <= state+1'd1;
 				end
 			1: begin
@@ -352,63 +355,97 @@ always @(posedge clk_sys) begin
 `ifdef MISTER_DUAL_SDRAM
 			// Secondary SDRAM testing (states 16-31)
 			16: if(SDRAM2_EN && sdram2_ready) begin
-					state      <= state+1'd1;
+					// Hardware presence test - write distinctive pattern  
+					sdram2_addr <= 'h0800000;  // Use address 8MB for presence test
+					sdram2_din  <= 16'hA5A5;   // Distinctive test pattern
+					sdram2_we   <= 1;
+					cfg[5:3]    <= 3'd0;       // Clear secondary bits
+					state       <= state+1'd1;
 				end
 				else begin
-					// No secondary SDRAM, skip to completion  
+					// No secondary SDRAM hardware, skip to completion  
+					cfg[6:3]   <= 4'd0;  // Clear secondary bits and presence flag
 					cfg[15]    <= 1;
-					state      <= 32;
+					state      <= state+16;
 				end
-			17: begin
-					sdram2_addr <= 'h4000000;
-					sdram2_din  <= 4128;
-					sdram2_we   <= 1;
+			17: state <= state+1'd1;
+			18: if(sdram2_ready) begin
+					// Read back the presence test pattern
+					sdram2_addr <= 'h0800000;  // Read from presence test address
+					sdram2_rd   <= 1;
 					state      <= state+1'd1;
 				end
-			18: state <= state+1'd1;
-			19: if(sdram2_ready) begin
+			19: state <= state+1'd1;
+			20: if(sdram2_ready) begin
+					// Verify hardware presence before capacity testing
+					if (sdram2_dout == 16'hA5A5) begin
+						// Hardware present, start capacity testing
+						sdram2_addr <= 'h4000000;
+						sdram2_din  <= 4128;  // Test pattern for 64MB boundary
+						sdram2_we   <= 1;
+						state      <= state+1'd1;
+					end
+					else begin
+						// Hardware not present - skip testing
+						cfg[6:3] <= 4'd0;  // Clear secondary bits and presence flag
+						cfg[15]  <= 1;
+						state    <= state+12;
+					end
+				end
+			21: state <= state+1'd1;
+			22: if(sdram2_ready) begin
 					sdram2_addr <= 'h2000000;
-					sdram2_din  <= 3064;
+					sdram2_din  <= 3064;  // Test pattern for 32MB boundary
 					sdram2_we   <= 1;
 					state      <= state+1'd1;
 				end
-			20: state <= state+1'd1;
-			21: if(sdram2_ready) begin
-					sdram2_addr <= 'h0000000;
-					sdram2_din  <= 2032;
+			23: state <= state+1'd1;
+			24: if(sdram2_ready) begin
+					sdram2_addr <= 'h0100000;  // Use 1MB address (safe for all sizes)
+					sdram2_din  <= 2032;       // Test pattern for base address  
 					sdram2_we   <= 1;
 					state      <= state+1'd1;
 				end
-			22: state <= state+1'd1;
-			23: if(sdram2_ready) begin
-					sdram2_addr <= 'h1000000;
-					sdram2_din  <= 22345;
-					sdram2_we   <= 1;
-					state      <= state+1'd1;
-				end
-			24: state <= state+1'd1;
-			25: if(sdram2_ready) begin
+			25: state <= state+1'd1;
+			26: if(sdram2_ready) begin
 					sdram2_addr <= 'h4000000;
 					sdram2_rd   <= 1;
 					state      <= state+1'd1;
 				end
-			26: state <= state+1'd1;
-			27: if(sdram2_ready) begin
-					cfg[5]      <= (sdram2_dout == 4128);  // Secondary 64MB+ in bit 5
+			27: state <= state+1'd1;
+			28: if(sdram2_ready) begin
+					cfg[5]      <= (sdram2_dout == 4128);  // 64MB+ test
 					sdram2_addr <= 'h2000000;
 					sdram2_rd   <= 1;
 					state      <= state+1'd1;
 				end
-			28: state <= state+1'd1;
-			29: if(sdram2_ready) begin
-					cfg[4]      <= (sdram2_dout == 3064);  // Secondary 32MB+ in bit 4
-					sdram2_addr <= 'h0000000;
+			29: state <= state+1'd1;
+			30: if(sdram2_ready) begin
+					cfg[4]      <= (sdram2_dout == 3064);  // 32MB+ test
+					sdram2_addr <= 'h0100000;  // Read from 1MB address
 					sdram2_rd   <= 1;
 					state      <= state+1'd1;
 				end
-			30: state <= state+1'd1;
 			31: if(sdram2_ready) begin
-					cfg[3]      <= (sdram2_dout == 2032);  // Secondary base in bit 3
+					cfg[3]      <= (sdram2_dout == 2032);  // Base address test
+					// Final secondary SDRAM validation and encoding
+					// Convert boundary test results to main binary expected format
+					if (cfg[4] && cfg[5]) begin
+						// Both 32MB+ and 64MB+ tests passed = assume 128MB
+						// (Even if base test fails, if higher boundaries work, it's likely 128MB)
+						cfg[5:3] <= 3'd7; // 111 = 128MB
+						cfg[6]   <= 1;    // Hardware present flag
+					end
+					else if (cfg[4]) begin
+						// Only 32MB+ passed = 32MB
+						cfg[5:3] <= 3'd1; // 001 = 32MB
+						cfg[6]   <= 1;    // Hardware present flag
+					end
+					else begin
+						// No tests passed = no hardware
+						cfg[5:3] <= 3'd0; // 000 = no SDRAM
+						cfg[6]   <= 0;    // No hardware present
+					end
 					cfg[15]     <= 1;  // Test complete
 					state       <= state+1'd1;
 				end
@@ -590,6 +627,7 @@ localparam lfsr_n = 63;
 
 wire PAL = status[4];
 wire FB  = status[5];
+wire [2:0] led = status[8:6];
 
 reg   [9:0] hc;
 reg   [9:0] vc;
