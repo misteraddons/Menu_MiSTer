@@ -175,6 +175,12 @@ mcp23009 mcp23009
 
 wire io_dig = mcp_en ? mcp_mode : SW[3];
 
+`ifdef MISTER_DUAL_SDRAM
+	// For dual SDRAM: disable secondary SDRAM when analog board detected via VGA_EN
+	wire analog_detected = ~VGA_EN;  // VGA_EN is active low, so ~VGA_EN=1 when analog present
+	wire io_board_digital = io_dig & ~analog_detected;  // Force digital=0 when analog detected
+`endif
+
 `ifndef MISTER_DUAL_SDRAM
 	wire   av_dis    = io_dig | VGA_EN;
 	assign LED_POWER = av_dis ? 1'bZ : mcp_en ? de1          : led_p ? 1'bZ : 1'b0;
@@ -230,7 +236,13 @@ end
 
 // gp_in[31] = 0 - quick flag that FPGA is initialized (HPS reads 1 when FPGA is not in user mode)
 //                 used to avoid lockups while JTAG loading
-wire [31:0] gp_in = {1'b0, btn_user | btn[1], btn_osd | btn[0], io_dig, 8'd0, io_ver, io_ack, io_wide, io_dout | io_dout_sys};
+wire [31:0] gp_in = {1'b0, btn_user | btn[1], btn_osd | btn[0], 
+`ifdef MISTER_DUAL_SDRAM
+                     io_board_digital,
+`else
+                     io_dig,
+`endif
+                     8'd0, io_ver, io_ack, io_wide, io_dout | io_dout_sys};
 wire [31:0] gp_out;
 
 wire  [1:0] io_ver = 1; // 0 - obsolete. 1 - optimized HPS I/O. 2,3 - reserved for future.
@@ -1809,7 +1821,7 @@ emu emu
 	.SDRAM2_nRAS(SDRAM2_nRAS),
 	.SDRAM2_nCAS(SDRAM2_nCAS),
 	.SDRAM2_CLK(SDRAM2_CLK),
-	.SDRAM2_EN(io_dig),
+	.SDRAM2_EN(io_board_digital),
 `endif
 
 	.BUTTONS(btn),
