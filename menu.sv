@@ -211,6 +211,7 @@ localparam CONF_STR = {
 	"MENU;UART31250,MIDI;",
 	"-;",
 	"T0,Show CFG Debug;",
+	"T1,Show IO Debug;",
 	"-;", 
 	"V,v",`BUILD_DATE 
 };
@@ -658,10 +659,30 @@ cos cos(vvc + {vc>>forced_scandoubler, 2'b00}, cos_out);
 
 wire [7:0] comp_v = (cos_g >= rnd_c) ? {cos_g - rnd_c, 2'b00} : 8'd0;
 
+// Debug: Show detection status when enabled
+wire show_cfg_debug = status[0];
+wire show_io_debug = status[1];
+
+// CFG debug display (show bits as bright/dim squares)
+wire [7:0] cfg_debug = 8'h00;
+wire in_cfg_area = (vc >= 50 && vc < 70 && hc >= 10 && hc < 170);
+wire [3:0] cfg_bit_index = (hc - 10) >> 4; // 16 pixels per bit
+wire cfg_bit_value = cfg[cfg_bit_index];
+wire [7:0] cfg_indicator = (in_cfg_area && show_cfg_debug && cfg_bit_index < 16) ? 
+                           (cfg_bit_value ? 8'hFF : 8'h40) : 8'h00;
+
+// IO debug display 
+wire [7:0] io_indicator = (hc < 100 && vc < 20 && show_io_debug) ? 
+                          (SDRAM2_EN ? 8'hFF : 8'h40) : 8'h00;
+wire [7:0] sdram2_indicator = (hc < 100 && vc >= 20 && vc < 40 && show_io_debug) ? 
+                              (cfg[6] ? 8'hFF : 8'h40) : 8'h00;
+
+wire [7:0] debug_color = cfg_indicator | io_indicator | sdram2_indicator | comp_v;
+
 assign VGA_DE  = ~(HBlank | VBlank);
 assign VGA_HS  = HSync;
 assign VGA_VS  = VSync;
-assign VGA_G   = comp_v;
+assign VGA_G   = debug_color;
 assign VGA_R   = comp_v;
 assign VGA_B   = comp_v;
 
