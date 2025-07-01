@@ -1,0 +1,1 @@
+- never mention claude in commits
