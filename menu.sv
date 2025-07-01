@@ -195,21 +195,20 @@ assign HDMI_FREEZE = 0;
 assign HDMI_BLACKOUT = 0;
 
 assign LED_DISK = 0;
-assign LED_POWER[1]= 1;
+assign LED_POWER = 0;
 assign BUTTONS = 0;
 
 reg  [26:0] act_cnt;
 always @(posedge clk_sys) act_cnt <= act_cnt + 1'd1; 
-assign LED_USER    = FB ? led[0] : act_cnt[26]  ? act_cnt[25:18]  > act_cnt[7:0]  : act_cnt[25:18]  <= act_cnt[7:0];
-
-wire [26:0] act_cnt2 = {~act_cnt[26],act_cnt[25:0]};
-assign LED_POWER[0]= FB ? led[2] : act_cnt2[26] ? act_cnt2[25:18] > act_cnt2[7:0] : act_cnt2[25:18] <= act_cnt2[7:0];
+assign LED_USER    = act_cnt[26]  ? act_cnt[25:18]  > act_cnt[7:0]  : act_cnt[25:18]  <= act_cnt[7:0];
 
 
 `include "build_id.v" 
 localparam CONF_STR = {
 	"MENU;UART31250,MIDI;",
 	"-;",
+	"T0,Show CFG Debug;",
+	"-;", 
 	"V,v",`BUILD_DATE 
 };
 
@@ -263,13 +262,28 @@ wire [15:0] sdram_dout;
 reg  [15:0] sdram_din;
 reg         sdram_we;
 reg         sdram_rd;
+
+`ifdef MISTER_DUAL_SDRAM
+// Secondary SDRAM interface for capacity testing
+reg  [26:0] sdram2_addr;
+wire        sdram2_ready;
+wire [15:0] sdram2_dout;
+reg  [15:0] sdram2_din;
+reg         sdram2_we;
+reg         sdram2_rd;
+`endif
+
 reg  [15:0] cfg = 0;
 
 always @(posedge clk_sys) begin
-	reg [4:0] state = 0;
+	reg [5:0] state = 0;
 
 	sdram_rd <= 0;
 	sdram_we <= 0;
+`ifdef MISTER_DUAL_SDRAM
+	sdram2_rd <= 0;
+	sdram2_we <= 0;
+`endif
 
 	if(RESET) begin
 		state <= 0;
@@ -277,6 +291,7 @@ always @(posedge clk_sys) begin
 	end
 	else begin
 		case(state)
+			// Primary SDRAM testing (states 0-15)
 			0: if(sdram_ready) begin
 					cfg <= 0;
 					state      <= state+1'd1;
@@ -331,10 +346,79 @@ always @(posedge clk_sys) begin
 			14: state <= state+1'd1;
 			15: if(sdram_ready) begin
 					cfg[0]     <= (sdram_dout == 1032);
+					state      <= state+1'd1;
+				end
+
+`ifdef MISTER_DUAL_SDRAM
+			// Secondary SDRAM testing (states 16-31)
+			16: if(SDRAM2_EN && sdram2_ready) begin
+					state      <= state+1'd1;
+				end
+				else begin
+					// No secondary SDRAM, skip to completion  
+					cfg[15]    <= 1;
+					state      <= 32;
+				end
+			17: begin
+					sdram2_addr <= 'h4000000;
+					sdram2_din  <= 4128;
+					sdram2_we   <= 1;
+					state      <= state+1'd1;
+				end
+			18: state <= state+1'd1;
+			19: if(sdram2_ready) begin
+					sdram2_addr <= 'h2000000;
+					sdram2_din  <= 3064;
+					sdram2_we   <= 1;
+					state      <= state+1'd1;
+				end
+			20: state <= state+1'd1;
+			21: if(sdram2_ready) begin
+					sdram2_addr <= 'h0000000;
+					sdram2_din  <= 2032;
+					sdram2_we   <= 1;
+					state      <= state+1'd1;
+				end
+			22: state <= state+1'd1;
+			23: if(sdram2_ready) begin
+					sdram2_addr <= 'h1000000;
+					sdram2_din  <= 22345;
+					sdram2_we   <= 1;
+					state      <= state+1'd1;
+				end
+			24: state <= state+1'd1;
+			25: if(sdram2_ready) begin
+					sdram2_addr <= 'h4000000;
+					sdram2_rd   <= 1;
+					state      <= state+1'd1;
+				end
+			26: state <= state+1'd1;
+			27: if(sdram2_ready) begin
+					cfg[5]      <= (sdram2_dout == 4128);  // Secondary 64MB+ in bit 5
+					sdram2_addr <= 'h2000000;
+					sdram2_rd   <= 1;
+					state      <= state+1'd1;
+				end
+			28: state <= state+1'd1;
+			29: if(sdram2_ready) begin
+					cfg[4]      <= (sdram2_dout == 3064);  // Secondary 32MB+ in bit 4
+					sdram2_addr <= 'h0000000;
+					sdram2_rd   <= 1;
+					state      <= state+1'd1;
+				end
+			30: state <= state+1'd1;
+			31: if(sdram2_ready) begin
+					cfg[3]      <= (sdram2_dout == 2032);  // Secondary base in bit 3
+					cfg[15]     <= 1;  // Test complete
+					state       <= state+1'd1;
+				end
+`else
+			16: begin
 					cfg[15]    <= 1;
 					state      <= state+1'd1;
 				end
-			16: begin
+`endif
+			32: begin
 					sdram_addr <= addr[24:0];
 					sdram_din  <= 0;
 					sdram_we   <= we;
@@ -352,6 +436,35 @@ ddram ddr
    .rd(0),
    .ready()
 );
+
+`ifdef MISTER_DUAL_SDRAM
+// Secondary SDRAM controller for capacity testing
+sdram sdram2
+(
+	.init(~locked),
+	.clk(clk_sys),
+	.addr(sdram2_addr),
+	.wtbt(3),
+	.dout(sdram2_dout),
+	.din(sdram2_din),
+	.rd(sdram2_rd),
+	.we(sdram2_we),
+	.ready(sdram2_ready),
+
+	// Secondary SDRAM pins  
+	.SDRAM_DQ(SDRAM2_DQ),
+	.SDRAM_A(SDRAM2_A),
+	.SDRAM_BA(SDRAM2_BA),
+	.SDRAM_nCS(SDRAM2_nCS),
+	.SDRAM_nWE(SDRAM2_nWE),
+	.SDRAM_nRAS(SDRAM2_nRAS),
+	.SDRAM_nCAS(SDRAM2_nCAS),
+	.SDRAM_CLK(SDRAM2_CLK),
+	.SDRAM_CKE(),  // Not connected for secondary
+	.SDRAM_DQML(), // Not connected for secondary  
+	.SDRAM_DQMH()  // Not connected for secondary
+);
+`endif
 
 reg        we;
 reg [28:0] addr = 0;
@@ -477,7 +590,6 @@ localparam lfsr_n = 63;
 
 wire PAL = status[4];
 wire FB  = status[5];
-wire [2:0] led = status[8:6];
 
 reg   [9:0] hc;
 reg   [9:0] vc;
