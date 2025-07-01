@@ -67,9 +67,6 @@ module sys_top
 	output  [1:0] SDRAM2_BA,
 	output        SDRAM2_CLK,
 
-	//////////// VGA DETECT /////
-	input         VGA_EN,  // active low, for analog board detection
-
 `else
 	//////////// VGA ///////////
 	output  [5:0] VGA_R,
@@ -179,9 +176,9 @@ mcp23009 mcp23009
 wire io_dig = mcp_en ? mcp_mode : SW[3];
 
 `ifdef MISTER_DUAL_SDRAM
-	// For dual SDRAM: disable secondary SDRAM when analog board detected via VGA_EN
-	wire analog_detected = ~VGA_EN;  // VGA_EN is active low, so ~VGA_EN=1 when analog present
-	wire io_board_digital = analog_detected ? 1'b0 : io_dig;
+	// For dual SDRAM: use MCP23009 detection for now
+	// The MCP23009 should properly detect analog vs digital boards
+	wire io_board_digital = io_dig;
 `endif
 
 `ifndef MISTER_DUAL_SDRAM
