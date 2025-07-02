@@ -412,7 +412,8 @@ always @(posedge clk_sys) begin
 				end
 `endif
 			31: begin
-					cfg[15] <= 1;     // Primary SDRAM present flag or test complete?
+					cfg[15] <= 1;     // Test complete flag
+					// Always initialize memory clearing for both SDRAM controllers
 					sdram_addr <= addr[24:0];
 					sdram_din  <= 0;
 					sdram_we   <= we;
@@ -671,7 +672,7 @@ wire cfg_bit_value = cfg[cfg_bit_index];
 wire [7:0] cfg_indicator = (in_cfg_area && show_cfg_debug && cfg_bit_index < 16) ? 
                            (cfg_bit_value ? 8'hFF : 8'h40) : 8'h00;
 
-// IO debug display 
+// IO debug display - show detailed MCP23009 state
 wire [7:0] io_indicator = (hc < 100 && vc < 20 && show_io_debug) ? 
                           (SDRAM2_EN ? 8'hFF : 8'h40) : 8'h00;
 wire [7:0] sdram2_indicator = (hc < 100 && vc >= 20 && vc < 40 && show_io_debug) ? 
