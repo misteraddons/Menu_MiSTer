@@ -237,7 +237,7 @@ end
 //                 used to avoid lockups while JTAG loading
 wire [31:0] gp_in = {1'b0, btn_user | btn[1], btn_osd | btn[0], 
 `ifdef MISTER_DUAL_SDRAM
-                     io_board_digital,
+                     ~io_board_digital,  // Invert: 0=digital, 1=analog for main binary
 `else
                      io_dig,
 `endif
