@@ -176,8 +176,9 @@ mcp23009 mcp23009
 wire io_dig = mcp_en ? mcp_mode : SW[3];
 
 `ifdef MISTER_DUAL_SDRAM
-	// For dual SDRAM: use MCP23009 detection, default to digital when no MCP23009
-	wire io_board_digital = mcp_en ? mcp_mode : 1'b1;  // Default to digital when no IO board
+	// For dual SDRAM: use MCP23009 detection only if analog board is actually present
+	// Default to digital when no real IO board detected (SDRAM module case)
+	wire io_board_digital = (mcp_en && ~mcp_mode) ? 1'b0 : 1'b1;  // Only analog if MCP detected AND reports analog mode
 `endif
 
 `ifndef MISTER_DUAL_SDRAM
