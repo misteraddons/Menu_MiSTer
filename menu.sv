@@ -265,13 +265,28 @@ wire [15:0] sdram_dout;
 reg  [15:0] sdram_din;
 reg         sdram_we;
 reg         sdram_rd;
+
+`ifdef MISTER_DUAL_SDRAM
+
+reg  [26:0] sdram2_addr;
+wire        sdram2_ready;
+wire [15:0] sdram2_dout;
+reg  [15:0] sdram2_din;
+reg         sdram2_we;
+reg         sdram2_rd;
+`endif
+
 reg  [15:0] cfg = 0;
 
 always @(posedge clk_sys) begin
-	reg [4:0] state = 0;
+	reg [5:0] state = 0;
 
 	sdram_rd <= 0;
 	sdram_we <= 0;
+`ifdef MISTER_DUAL_SDRAM
+	sdram2_rd <= 0;
+	sdram2_we <= 0;
+`endif
 
 	if(RESET) begin
 		state <= 0;
@@ -333,13 +348,74 @@ always @(posedge clk_sys) begin
 			14: state <= state+1'd1;
 			15: if(sdram_ready) begin
 					cfg[0]     <= (sdram_dout == 1032);
-					cfg[15]    <= 1;
 					state      <= state+1'd1;
 				end
-			16: begin
+
+`ifdef MISTER_DUAL_SDRAM
+			16: if(sdram2_ready) begin
+					sdram2_addr <= 'h4000000;
+					sdram2_din  <= 3128;
+					sdram2_we   <= 1;
+					state      <= state+1'd1;
+				end
+			17: state <= state+1'd1;
+			18: if(sdram2_ready) begin
+					sdram2_addr <= 'h2000000;
+					sdram2_din  <= 2064;
+					sdram2_we   <= 1;
+					state      <= state+1'd1;
+				end
+			19: state <= state+1'd1;
+			20: if(sdram2_ready) begin
+					sdram2_addr <= 'h0000000;
+					sdram2_din  <= 1032;
+					sdram2_we   <= 1;
+					state      <= state+1'd1;
+				end
+			21: state <= state+1'd1;
+			22: if(sdram2_ready) begin
+					sdram2_addr <= 'h1000000;
+					sdram2_din  <= 12345;
+					sdram2_we   <= 1;
+					state      <= state+1'd1;
+				end
+			23: state <= state+1'd1;
+			24: if(sdram2_ready) begin
+					sdram2_addr <= 'h4000000;
+					sdram2_rd   <= 1;
+					state      <= state+1'd1;
+				end
+			25: state <= state+1'd1;
+			26: if(sdram2_ready) begin
+					cfg[5]     <= (sdram2_dout == 3128);
+					sdram2_addr <= 'h2000000;
+					sdram2_rd   <= 1;
+					cfg[6]   <= 1;
+					state      <= state+1'd1;
+				end
+			27: state <= state+1'd1;
+			28: if(sdram2_ready) begin
+					cfg[4]     <= (sdram2_dout == 2064);
+					sdram2_addr <= 'h0000000;
+					sdram2_rd   <= 1;
+					cfg[6]   <= 1;
+					state      <= state+1'd1;
+				end
+			29: state <= state+1'd1;
+			30: if(sdram2_ready) begin
+					cfg[3]     <= (sdram2_dout == 1032);
+					cfg[6]   <= 1;
+					state      <= state+1'd1;
+				end
+`endif
+			31: begin
+					cfg[15] <= 1;
 					sdram_addr <= addr[24:0];
 					sdram_din  <= 0;
 					sdram_we   <= we;
+					sdram2_addr <= addr[24:0];
+					sdram2_din  <= 0;
+					sdram2_we   <= we;
 				end
 		endcase
 	end
@@ -354,6 +430,33 @@ ddram ddr
    .rd(0),
    .ready()
 );
+
+`ifdef MISTER_DUAL_SDRAM
+sdram sdram2
+(
+	.init(~locked),
+	.clk(clk_sys),
+	.addr(sdram2_addr),
+	.wtbt(3),
+	.dout(sdram2_dout),
+	.din(sdram2_din),
+	.rd(sdram2_rd),
+	.we(sdram2_we),
+	.ready(sdram2_ready),
+ 
+	.SDRAM_DQ(SDRAM2_DQ),
+	.SDRAM_A(SDRAM2_A),
+	.SDRAM_BA(SDRAM2_BA),
+	.SDRAM_nCS(SDRAM2_nCS),
+	.SDRAM_nWE(SDRAM2_nWE),
+	.SDRAM_nRAS(SDRAM2_nRAS),
+	.SDRAM_nCAS(SDRAM2_nCAS),
+	.SDRAM_CLK(SDRAM2_CLK),
+	.SDRAM_CKE(),  // Not connected for secondary
+	.SDRAM_DQML(), // Not connected for secondary  
+	.SDRAM_DQMH()  // Not connected for secondary
+);
+`endif
 
 reg        we;
 reg [28:0] addr = 0;
