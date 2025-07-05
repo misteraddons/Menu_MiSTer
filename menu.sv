@@ -334,6 +334,7 @@ always @(posedge clk_sys) begin
 			10: state <= state+1'd1;
 			11: if(sdram_ready) begin
 					cfg[2]     <= (sdram_dout == 3128);
+					cfg[5]     <= (sdram_dout == 3128);
 					sdram_addr <= 'h2000000;
 					sdram_rd   <= 1;
 					state      <= state+1'd1;
@@ -387,7 +388,7 @@ always @(posedge clk_sys) begin
 				end
 			25: state <= state+1'd1;
 			26: if(sdram2_ready) begin
-					cfg[5]     <= (sdram2_dout == 3128);
+					cfg[8]     <= (sdram2_dout == 3128);
 					sdram2_addr <= 'h2000000;
 					sdram2_rd   <= 1;
 					cfg[6]   <= 1;
